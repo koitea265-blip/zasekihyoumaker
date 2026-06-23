@@ -310,6 +310,7 @@
                         return Array.isArray(saved) ? saved : [];
                     });
 
+                    // 設定項目に genderPattern を追加
                     const [config, setConfig] = useState(() => {
                         const saved = loadFromStorage('sekigae_config', null);
                         const defaultVal = {
@@ -318,6 +319,7 @@
                             className: 'X年X組',
                             password: '',
                             perspective: 'STUDENT',
+                            genderPattern: 'checkerboard',
                         };
                         if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return defaultVal;
                         return { ...defaultVal, ...saved };
@@ -450,9 +452,25 @@
                             const totalF = students.filter(s => s.gender === 'F').length;
                             const evenIsBoy = totalM >= totalF; 
 
+                            // 新規実装: 選択されたパターンに基づく性別評価ロジック
                             const isPreferredGenderSlot = (idx, gender) => {
+                                const pattern = config.genderPattern || 'checkerboard';
+                                if (pattern === 'random') return true;
+
                                 const r = Math.floor(idx / config.cols);
                                 const c = idx % config.cols;
+
+                                if (pattern === 'column_boy_left') {
+                                    const isBoyColumn = c % 2 === 0;
+                                    return gender === 'M' ? isBoyColumn : !isBoyColumn;
+                                }
+
+                                if (pattern === 'column_girl_left') {
+                                    const isGirlColumn = c % 2 === 0;
+                                    return gender === 'F' ? isGirlColumn : !isGirlColumn;
+                                }
+
+                                // デフォルト: checkerboard (市松模様)
                                 const isEven = (r + c) % 2 === 0;
                                 if (gender === 'M') return isEven === evenIsBoy;
                                 return isEven !== evenIsBoy;
@@ -605,18 +623,15 @@
                                 if (bestSlot !== null) placeStudent(student, bestSlot);
                             });
 
-                            // Phase 3: 残り (前方から順に市松模様で埋める)
+                            // Phase 3: 残り (前方から順にパターンで埋める)
                             const remainingBoys = students.filter(s => s.gender === 'M').sort(() => Math.random() - 0.5);
                             const remainingGirls = students.filter(s => s.gender === 'F').sort(() => Math.random() - 0.5);
 
                             const emptySlots = validSlots.filter(idx => newSeats[idx] === null).sort((a, b) => a - b);
 
                             for (const seatIdx of emptySlots) {
-                                const r = Math.floor(seatIdx / config.cols);
-                                const c = seatIdx % config.cols;
-                                const isEven = (r + c) % 2 === 0;
-                                
-                                const preferBoy = (evenIsBoy && isEven) || (!evenIsBoy && !isEven);
+                                // 新規実装: 動的な配置判定
+                                const preferBoy = isPreferredGenderSlot(seatIdx, 'M');
 
                                 const tryAssign = (list) => {
                                     for (let i = 0; i < list.length; i++) {
@@ -871,19 +886,29 @@
                                 h('div', { className: 'p-6 space-y-8' },
                                     h('section', { className: 'border-b pb-6' },
                                         h('h3', { className: 'font-bold text-gray-700 mb-4 flex items-center gap-2' }, 'クラス設定'),
-                                        h('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4 mb-4' },
+                                        // UI変更: 配置パターンのプルダウンを新設し、レスポンシブなグリッドレイアウトで配置
+                                        h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4' },
                                             h('div', null,
                                                 h('label', { className: 'block text-sm text-gray-600 mb-1' }, '学級名'),
                                                 h('input', { type: 'text', value: config.className, onChange: (e) => setConfig({...config, className: e.target.value}), className: 'w-full border rounded p-2' })
                                             ),
-                                            h('div', { className: 'flex gap-4' },
-                                                h('div', null,
+                                            h('div', null,
+                                                h('label', { className: 'block text-sm text-gray-600 mb-1' }, '男女配置パターン'),
+                                                h('select', { value: config.genderPattern || 'checkerboard', onChange: (e) => setConfig({...config, genderPattern: e.target.value}), className: 'w-full border rounded p-2 text-sm' },
+                                                    h('option', { value: 'checkerboard' }, '市松模様 (男女交互)'),
+                                                    h('option', { value: 'column_boy_left' }, '男女別列 (左端が男子)'),
+                                                    h('option', { value: 'column_girl_left' }, '男女別列 (左端が女子)'),
+                                                    h('option', { value: 'random' }, '性別を考慮しない')
+                                                )
+                                            ),
+                                            h('div', { className: 'flex gap-4 lg:col-span-2' },
+                                                h('div', { className: 'w-full' },
                                                     h('label', { className: 'block text-sm text-gray-600 mb-1' }, '横列数'),
-                                                    h('input', { type: 'number', min: 1, max: 10, value: config.cols, onChange: (e) => setConfig({...config, cols: parseInt(e.target.value) || 6}), className: 'w-full border rounded p-2 w-20' })
+                                                    h('input', { type: 'number', min: 1, max: 10, value: config.cols, onChange: (e) => setConfig({...config, cols: parseInt(e.target.value) || 6}), className: 'w-full border rounded p-2' })
                                                 ),
-                                                h('div', null,
+                                                h('div', { className: 'w-full' },
                                                     h('label', { className: 'block text-sm text-gray-600 mb-1' }, '縦行数'),
-                                                    h('input', { type: 'number', min: 1, max: 10, value: config.rows, onChange: (e) => setConfig({...config, rows: parseInt(e.target.value) || 6}), className: 'w-full border rounded p-2 w-20' })
+                                                    h('input', { type: 'number', min: 1, max: 10, value: config.rows, onChange: (e) => setConfig({...config, rows: parseInt(e.target.value) || 6}), className: 'w-full border rounded p-2' })
                                                 )
                                             )
                                         ),
@@ -1090,10 +1115,23 @@
                                 h('div', { className: 'border-2 border-black bg-gray-100 px-10 py-2 rounded font-bold text-lg' }, '教 卓')
                             )
                         ),
-                        h('div', { className: 'fixed bottom-0 w-full bg-white border-t p-4 flex justify-center gap-4 shadow-lg print:hidden z-20' },
+                        h('div', { className: 'fixed bottom-0 w-full bg-white border-t p-4 flex justify-center gap-4 shadow-lg print:hidden z-20 items-center' },
+                            h('div', { className: 'flex items-center bg-gray-100 rounded-full px-4 py-2 border shadow-inner' },
+                                h('span', { className: 'text-sm text-gray-600 mr-2 font-bold' }, '配置パターン:'),
+                                h('select', {
+                                    value: config.genderPattern || 'checkerboard',
+                                    onChange: (e) => setConfig({...config, genderPattern: e.target.value}),
+                                    className: 'text-sm p-1 outline-none font-bold text-gray-800 bg-transparent'
+                                },
+                                    h('option', { value: 'checkerboard' }, '市松模様 (男女交互)'),
+                                    h('option', { value: 'column_boy_left' }, '男女別列 (左端が男子)'),
+                                    h('option', { value: 'column_girl_left' }, '男女別列 (左端が女子)'),
+                                    h('option', { value: 'random' }, '性別を考慮しない')
+                                )
+                            ),
                             !isShuffling ? 
-                                h('button', { onClick: startShuffle, className: 'flex items-center justify-center gap-2 bg-blue-600 text-white w-40 py-3 rounded-full font-bold text-lg shadow hover:bg-blue-700 transition transform hover:scale-105 active:scale-95' }, h(Shuffle, { size: 24 }), ' 席替え開始') :
-                                h('button', { onClick: stopShuffle, className: 'flex items-center justify-center gap-2 bg-red-600 text-white w-40 py-3 rounded-full font-bold text-lg shadow hover:bg-red-700 transition transform hover:scale-105 active:scale-95' }, h(StopCircle, { size: 24 }), ' STOP')
+                                h('button', { onClick: startShuffle, className: 'flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-full font-bold text-lg shadow hover:bg-blue-700 transition transform hover:scale-105 active:scale-95' }, h(Shuffle, { size: 24 }), ' 席替え開始') :
+                                h('button', { onClick: stopShuffle, className: 'flex items-center justify-center gap-2 bg-red-600 text-white px-6 py-3 rounded-full font-bold text-lg shadow hover:bg-red-700 transition transform hover:scale-105 active:scale-95' }, h(StopCircle, { size: 24 }), ' STOP')
                         ),
                         h('div', { className: 'h-24 print:hidden' }),
                         h(Modal, { modal: modal, closeModal: closeModal, modalInput: modalInput, setModalInput: setModalInput, submitModalAuth: submitModalAuth, authError: authError })
