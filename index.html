@@ -624,46 +624,69 @@
                             });
 
                             // Phase 3: 残り (前方から順にパターンで埋める)
+                            let remainingStudents = [...students].sort(() => Math.random() - 0.5);
                             const remainingBoys = students.filter(s => s.gender === 'M').sort(() => Math.random() - 0.5);
                             const remainingGirls = students.filter(s => s.gender === 'F').sort(() => Math.random() - 0.5);
 
                             const emptySlots = validSlots.filter(idx => newSeats[idx] === null).sort((a, b) => a - b);
 
                             for (const seatIdx of emptySlots) {
-                                // 新規実装: 動的な配置判定
-                                const preferBoy = isPreferredGenderSlot(seatIdx, 'M');
-
-                                const tryAssign = (list) => {
-                                    for (let i = 0; i < list.length; i++) {
-                                        const st = list[i];
-                                        if (checkAvoidance(seatIdx, st)) {
-                                            list.splice(i, 1);
-                                            return st;
+                                if (config.genderPattern === 'random') {
+                                    // 完全ランダム配置（性別無考慮で全員のリストから抽出）
+                                    const tryAssignAny = () => {
+                                        for (let i = 0; i < remainingStudents.length; i++) {
+                                            const st = remainingStudents[i];
+                                            if (checkAvoidance(seatIdx, st)) {
+                                                remainingStudents.splice(i, 1);
+                                                return st;
+                                            }
                                         }
+                                        return null;
+                                    };
+                                    
+                                    let assigned = tryAssignAny();
+                                    if (!assigned && remainingStudents.length > 0) {
+                                        assigned = remainingStudents.pop(); // 詰み回避
                                     }
-                                    return null;
-                                };
+                                    if (assigned) newSeats[seatIdx] = assigned;
 
-                                let assigned = null;
-                                if (preferBoy) {
-                                    assigned = tryAssign(remainingBoys);
-                                    if (!assigned) assigned = tryAssign(remainingGirls);
                                 } else {
-                                    assigned = tryAssign(remainingGirls);
-                                    if (!assigned) assigned = tryAssign(remainingBoys);
-                                }
+                                    // 既存のパターン別配置ロジック
+                                    const preferBoy = isPreferredGenderSlot(seatIdx, 'M');
 
-                                if (!assigned) {
-                                     if (preferBoy) {
-                                         if (remainingBoys.length > 0) assigned = remainingBoys.pop();
-                                         else if (remainingGirls.length > 0) assigned = remainingGirls.pop();
-                                     } else {
-                                         if (remainingGirls.length > 0) assigned = remainingGirls.pop();
-                                         else if (remainingBoys.length > 0) assigned = remainingBoys.pop();
-                                     }
-                                }
+                                    const tryAssign = (list) => {
+                                        for (let i = 0; i < list.length; i++) {
+                                            const st = list[i];
+                                            if (checkAvoidance(seatIdx, st)) {
+                                                list.splice(i, 1);
+                                                return st;
+                                            }
+                                        }
+                                        return null;
+                                    };
 
-                                if (assigned) newSeats[seatIdx] = assigned;
+                                    let assigned = null;
+                                    if (preferBoy) {
+                                        assigned = tryAssign(remainingBoys);
+                                        if (!assigned) assigned = tryAssign(remainingGirls);
+                                    } else {
+                                        assigned = tryAssign(remainingGirls);
+                                        if (!assigned) assigned = tryAssign(remainingBoys);
+                                    }
+
+                                    // 最後の手段：詰み回避
+                                    if (!assigned) {
+                                         if (preferBoy) {
+                                             if (remainingBoys.length > 0) assigned = remainingBoys.pop();
+                                             else if (remainingGirls.length > 0) assigned = remainingGirls.pop();
+                                         } else {
+                                             if (remainingGirls.length > 0) assigned = remainingGirls.pop();
+                                             else if (remainingBoys.length > 0) assigned = remainingBoys.pop();
+                                         }
+                                    }
+
+                                    if (assigned) newSeats[seatIdx] = assigned;
+                                }
                             }
 
                             return newSeats.map((s, i) => ({ id: `seat-${i}`, student: s }));
